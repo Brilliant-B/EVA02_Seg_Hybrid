@@ -86,9 +86,12 @@ lr_config = dict(_delete_=True, policy='poly',
 
 # By default, models are trained on 8 GPUs with 2 images per GPU
 data=dict(
-    samples_per_gpu=5,
+    samples_per_gpu=6,
     workers_per_gpu=2,
 )
+
+checkpoint_config = dict(by_epoch=False, interval=1000, max_keep_ckpts=10)
+evaluation = dict(interval=10000, metric='mIoU', save_best='mIoU')
 
 runner = dict(type='IterBasedRunnerAmp')
 

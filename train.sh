@@ -8,4 +8,5 @@ RESUME=""
 
 python train.py --config ${CONFIGS} --seed 0 --deterministic --gpu-ids ${GPU} \
  --work-dir ${WORK_DIR} \
+#  --no-validate
 #  --load-from ${LOAD}
