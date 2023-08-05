@@ -1,45 +1,30 @@
 import argparse
 import copy
 import os
+os.environ["CUDA_VISIBLE_DEVICES"] = "0, "
 import os.path as osp
 import time
-import bitsandbytes as bnb
+import re
+import loralib as lora
 
-import mmcv
 import torch
 import torch.nn as nn
+import mmcv
 from mmcv.runner import init_dist
 from mmcv.utils import Config, DictAction, get_git_hash
-
 from mmseg import __version__
 from mmseg.apis import set_random_seed
 from mmcv_custom import train_segmentor
 from mmseg.datasets import build_dataset
 from mmseg.models import build_segmentor
 from mmseg.utils import collect_env, get_root_logger
-
 from mmseg.models.backbones import EVA2
-import loralib as lora
 
-from transformers import (
-    PreTrainedModel,
-    PretrainedConfig,
-    AutoModelForCausalLM,
-    BitsAndBytesConfig,
-)
-from peft import (
-    prepare_model_for_kbit_training,
-    LoraConfig,
-    get_peft_model,
-    PeftModel
-)
-from peft.tuners.lora import LoraLayer
-from transformers.trainer_utils import PREFIX_CHECKPOINT_DIR
 
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Train a segmentor')
-    parser.add_argument('config', help='train config file path')
+    parser.add_argument('--config', help='train config file path')
     parser.add_argument('--work-dir', help='the dir to save logs and models')
     parser.add_argument(
         '--load-from', help='the checkpoint file to load weights from')
@@ -81,6 +66,8 @@ def parse_args():
     return args
 
 
+
+'''
 def find_eva_linear_names(model):
     lora_module_names = set()
     for name, module in model.backbone.named_modules():
@@ -94,6 +81,22 @@ def find_eva_linear_names(model):
 
 
 def get_accelerate_model(args, model, checkpoint_dir=None):
+    from transformers import (
+    PreTrainedModel,
+    PretrainedConfig,
+    AutoModelForCausalLM,
+    BitsAndBytesConfig,
+    )
+    from peft import (
+        prepare_model_for_kbit_training,
+        LoraConfig,
+        get_peft_model,
+        PeftModel
+    )
+    from peft.tuners.lora import LoraLayer
+    from transformers.trainer_utils import PREFIX_CHECKPOINT_DIR
+    import bitsandbytes as bnb
+    
     pconfig=PretrainedConfig(is_encoder_decoder=True,torch_dtype=torch.float32)
     prtr=PreTrainedModel(pconfig)
     # prtr.save_pretrained('workbench/pretrained/')
@@ -146,10 +149,38 @@ def get_accelerate_model(args, model, checkpoint_dir=None):
                 module = module.to(torch.bfloat16)
 
     return model
+'''
 
 
-def main():
+
+def get_finetune_model(model, code, verbose=False):
+    def freeze_match(name, f_list):
+        ret = False
+        for n in f_list:
+            ret = ret or (re.search(n, name) is not None)
+        return ret
+    
+    freeze_list = []
+    
+    if code == 1:
+        checkpoint = torch.load(model.backbone.pretrained, map_location='cpu')["model"]
+        freeze_list.extend([f"backbone.{key}" for key in checkpoint.keys()])
+    
+    if verbose:
+        print("**frozen parameters**")
+        print(f"List: {freeze_list}")
+    for key, value in model.named_parameters():
+        if freeze_match(key, freeze_list):
+            value.requires_grad = False
+            if verbose:
+                print(key)
+    return model
+
+
+
+def main(info, verbose=False):
     args = parse_args()
+    finetune_code = info["finetune_code"]
 
     cfg = Config.fromfile(args.config)
     if args.options is not None:
@@ -164,8 +195,8 @@ def main():
         cfg.work_dir = args.work_dir
     elif cfg.get('work_dir', None) is None:
         # use config filename as default work_dir if cfg.work_dir is None
-        cfg.work_dir = osp.join('./work_dirs',
-                                osp.splitext(osp.basename(args.config))[0])
+        cfg.work_dir = osp.join('./work_dirs', osp.splitext(osp.basename(args.config))[0])
+    cfg.work_dir = osp.join(cfg.work_dir, f"finetune_{finetune_code}")
     if args.load_from is not None:
         cfg.load_from = args.load_from
     if args.resume_from is not None:
@@ -174,7 +205,6 @@ def main():
         cfg.gpu_ids = args.gpu_ids
     else:
         cfg.gpu_ids = range(1) if args.gpus is None else range(args.gpus)
-
     # init distributed env first, since logger depends on the dist info.
     if args.launcher == 'none':
         distributed = False
@@ -198,16 +228,14 @@ def main():
     env_info_dict = collect_env()
     env_info = '\n'.join([f'{k}: {v}' for k, v in env_info_dict.items()])
     dash_line = '-' * 60 + '\n'
-    logger.info('Environment info:\n' + dash_line + env_info + '\n' +
-                dash_line)
+    if verbose:
+        logger.info('Environment info:\n' + dash_line + env_info + '\n' + dash_line)
+        logger.info(f'Config:\n{cfg.pretty_text}')
     meta['env_info'] = env_info
-
-    # log some basic info
-    logger.info(f'Distributed training: {distributed}')
-    logger.info(f'Config:\n{cfg.pretty_text}')
 
     # set random seeds
     if args.seed is not None:
+        logger.info(f'Distributed training: {distributed}')
         logger.info(f'Set random seed to {args.seed}, deterministic: '
                     f'{args.deterministic}')
         set_random_seed(args.seed, deterministic=args.deterministic)
@@ -220,11 +248,12 @@ def main():
         train_cfg=cfg.get('train_cfg'),
         test_cfg=cfg.get('test_cfg')
     )
-
-    # for k,v in model.named_parameters():
-    #     print('{}: {}'.format(k, v.requires_grad))
-    # logger.info(model)
-
+    # finetune_code: {0: non_freeze; 1: freeze_loaded_eva2}
+    if finetune_code > 0:
+        model = get_finetune_model(model, finetune_code, verbose=verbose)
+    if verbose:
+        logger.info(model)
+    
     datasets = [build_dataset(cfg.data.train)]
     if len(cfg.workflow) == 2:
         val_dataset = copy.deepcopy(cfg.data.val)
@@ -252,4 +281,7 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    hyper_info = {
+        "finetune_code": 1,
+    }
+    main(hyper_info) # verbose=True

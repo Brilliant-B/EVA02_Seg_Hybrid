@@ -33,7 +33,7 @@ model = dict(
         drop_rate=0.1, 
         attn_drop_rate=0.1,
         drop_path_rate=0.2,
-
+        
         init_values=None, 
         use_checkpoint=False, 
         use_abs_pos_emb=True, 
@@ -43,23 +43,24 @@ model = dict(
         pt_hw_seq_len=16,
         intp_freq=True,
         subln=True,
-        xattn=True,
+        xattn=False,
         naiveswiglu=True,
         pretrained='pretrained/eva02_L_pt_m38m_p14to16.pt',
     ),
     decode_head=dict(
         type='SegmenterHead_maskT',
         img_size_ori=224, # 重要！
-        d_encoder=1024, # 重要！
         n_layers=2,
         n_heads=12,
         d_model=768, # 重要！
-        d_ff=4*768,
+        d_ff=4 * 768,
         drop_path_rate=0.0,
         dropout=0.1,
-        in_channels=224,
-        channels=512,
-        in_index=0,
+        
+        input_transform="resize_concat",
+        in_channels=(1024, 1024, 1024, 1024), # 重要！
+        in_index=(0, 1, 2, 3),
+        channels=1024,
         dropout_ratio=0, # no relation
         num_classes=60,
         norm_cfg=norm_cfg,

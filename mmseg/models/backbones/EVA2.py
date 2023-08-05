@@ -1,33 +1,19 @@
-# --------------------------------------------------------
-# BEIT: BERT Pre-Training of Image Transformers (https://arxiv.org/abs/2106.08254)
-# Github source: https://github.com/microsoft/unilm/tree/master/beit
-# Copyright (c) 2021 Microsoft
-# Licensed under The MIT License [see LICENSE for details]
-# By Hangbo Bao
-# Based on timm, mmseg, setr, xcit and swin code bases
-# https://github.com/rwightman/pytorch-image-models/tree/master/timm
-# https://github.com/fudan-zvg/SETR
-# https://github.com/facebookresearch/xcit/
-# https://github.com/microsoft/Swin-Transformer
-# --------------------------------------------------------'
-
 import torch
-from functools import partial
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.utils.checkpoint as checkpoint
 
+from functools import partial
 from timm.models.layers import drop_path, to_2tuple, trunc_normal_
+from apex.normalization import FusedLayerNorm
+from math import pi
+from einops import rearrange, repeat
+# import xformers.ops as xops
 
 from mmcv_custom import load_checkpoint
 from mmseg.utils import get_root_logger
 from mmseg.models.builder import BACKBONES
 
-import xformers.ops as xops
-from apex.normalization import FusedLayerNorm
-
-from math import pi
-from einops import rearrange, repeat
 
 
 def broadcat(tensors, dim = -1):
@@ -56,6 +42,7 @@ def rotate_half(x):
 
 
 
+'''
 class VisionRotaryEmbedding(nn.Module):
     def __init__(
         self,
@@ -103,7 +90,7 @@ class VisionRotaryEmbedding(nn.Module):
         t_left, t, t_right = t[..., :start_index], t[..., start_index:end_index], t[..., end_index:]
         t = (t * self.freqs_cos) + (rotate_half(t) * self.freqs_sin)
         return torch.cat((t_left, t, t_right), dim = -1)
-
+'''
 
 
 
@@ -140,10 +127,8 @@ class VisionRotaryEmbeddingFast(nn.Module):
 
         freqs_cos = freqs.cos().view(-1, freqs.shape[-1])
         freqs_sin = freqs.sin().view(-1, freqs.shape[-1])
-
         self.register_buffer("freqs_cos", freqs_cos)
         self.register_buffer("freqs_sin", freqs_sin)
-
 
     def forward(self, t): 
         return  t * self.freqs_cos + rotate_half(t) * self.freqs_sin
@@ -312,7 +297,7 @@ class Attention(nn.Module):
             ro_k_t = self.rope(k_t)
             k = torch.cat((k[:, :, :1, :], ro_k_t), -2).type_as(v)
 
-        if self.xattn:
+        if False:
             q = q.permute(0, 2, 1, 3)   # B, num_heads, N, C -> B, N, num_heads, C
             k = k.permute(0, 2, 1, 3)
             v = v.permute(0, 2, 1, 3)
@@ -538,7 +523,7 @@ class EVA2(nn.Module):
                  out_indices=[3, 5, 7, 11],
 
                  subln=True,
-                 xattn=True,
+                 xattn=False,
                  naiveswiglu=True,
                  rope=True,
                  pt_hw_seq_len=16,
@@ -584,6 +569,7 @@ class EVA2(nn.Module):
             )
         else: self.rope = None
         self.naiveswiglu = naiveswiglu
+        self.pretrained = pretrained
 
         dpr = [x.item() for x in torch.linspace(0, drop_path_rate, depth)]  # stochastic depth decay rule
         self.use_rel_pos_bias = use_rel_pos_bias
@@ -673,7 +659,7 @@ class EVA2(nn.Module):
     def get_num_layers(self):
         return len(self.blocks)
 
-    # @torch.jit.ignore
+    @torch.jit.ignore
     def no_weight_decay(self):
         return {'pos_embed', 'cls_token'}
 
@@ -704,11 +690,8 @@ class EVA2(nn.Module):
         if len(features) == 1:
             for i in range(len(ops) - 1):
                 features.append(features[0])
-            for i in range(len(features)):
-                features[i] = ops[i](features[i])
-        else:
-            for i in range(len(features)):
-                features[i] = ops[i](features[i])
+        for i in range(len(features)):
+            features[i] = ops[i](features[i])
 
         return tuple(features)
 

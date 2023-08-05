@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 
-GPUS=4
+GPU=0
 CONFIGS="configs/eva2_hybrid/Segmenter_EVA02_large_24_512_slide_80k.py"
+WORK_DIR="workbench/eva2_segmenter/"
+LOAD=""
+RESUME=""
 
-python -m torch.distributed.launch --nproc_per_node=${GPUS} \
-    --use_env train.py --launcher pytorch \
-    ${CONFIGS} --seed 0 --deterministic --gpus ${GPUS} \
-    # --load-from workbench/iter_60000.pth
+python train.py --config ${CONFIGS} --seed 0 --deterministic --gpu-ids ${GPU} \
+ --work-dir ${WORK_DIR} \
+#  --load-from ${LOAD}

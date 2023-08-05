@@ -91,10 +91,9 @@ class Block(nn.Module):
 
 @HEADS.register_module()
 class SegmenterHead_maskT(BaseDecodeHead):
-    def __init__(self, img_size_ori, d_encoder, n_layers, n_heads, d_model, d_ff, drop_path_rate, dropout, **kwargs):
-        super(SegmenterHead_maskT, self).__init__(input_transform=None, **kwargs)
+    def __init__(self, img_size_ori, n_layers, n_heads, d_model, d_ff, drop_path_rate, dropout, **kwargs):
+        super(SegmenterHead_maskT, self).__init__(**kwargs)
         self.img_size_ori = img_size_ori
-        self.d_encoder = d_encoder
         self.d_model = d_model
         self.d_ff = d_ff
         self.scale = d_model ** -0.5
@@ -105,7 +104,7 @@ class SegmenterHead_maskT(BaseDecodeHead):
         )
 
         self.cls_emb = nn.Parameter(torch.randn(1, self.num_classes, d_model))
-        self.proj_dec = nn.Linear(d_encoder, d_model)
+        self.proj_dec = nn.Linear(self.in_channels, d_model)
 
         self.proj_patch = nn.Parameter(self.scale * torch.randn(d_model, d_model))
         self.proj_classes = nn.Parameter(self.scale * torch.randn(d_model, d_model))
@@ -119,10 +118,9 @@ class SegmenterHead_maskT(BaseDecodeHead):
     def forward(self, inputs):
         x = self._transform_inputs(inputs)
         GS = x.shape[-1]
-
         x = rearrange(x, "b n h w -> b (h w) n")
-
         x = self.proj_dec(x)
+        
         cls_emb = self.cls_emb.expand(x.size(0), -1, -1)
         x = torch.cat((x, cls_emb), 1)
         for blk in self.blocks:
