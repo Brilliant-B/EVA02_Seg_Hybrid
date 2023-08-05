@@ -19,7 +19,7 @@ from mmseg.datasets import build_dataloader, build_dataset
 from mmseg.models import build_segmentor
 from mmseg.utils import build_ddp, build_dp, get_device, setup_multi_processes
 
-from backbone import eva2
+from mmseg.models.backbones import EVA2
 
 
 def parse_args():

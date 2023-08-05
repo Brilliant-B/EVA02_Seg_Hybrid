@@ -3,9 +3,11 @@ import copy
 import os
 import os.path as osp
 import time
+import bitsandbytes as bnb
 
 import mmcv
 import torch
+import torch.nn as nn
 from mmcv.runner import init_dist
 from mmcv.utils import Config, DictAction, get_git_hash
 
@@ -16,7 +18,24 @@ from mmseg.datasets import build_dataset
 from mmseg.models import build_segmentor
 from mmseg.utils import collect_env, get_root_logger
 
-from backbone import eva2
+from mmseg.models.backbones import EVA2
+import loralib as lora
+
+from transformers import (
+    PreTrainedModel,
+    PretrainedConfig,
+    AutoModelForCausalLM,
+    BitsAndBytesConfig,
+)
+from peft import (
+    prepare_model_for_kbit_training,
+    LoraConfig,
+    get_peft_model,
+    PeftModel
+)
+from peft.tuners.lora import LoraLayer
+from transformers.trainer_utils import PREFIX_CHECKPOINT_DIR
+
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Train a segmentor')
@@ -60,6 +79,73 @@ def parse_args():
         os.environ['LOCAL_RANK'] = str(args.local_rank)
 
     return args
+
+
+def find_eva_linear_names(model):
+    lora_module_names = set()
+    for name, module in model.backbone.named_modules():
+        if isinstance(module, bnb.nn.Linear4bit):
+            names = name.split('.')
+            lora_module_names.add(names[0] if len(names) == 1 else names[-1])
+
+    if 'lm_head' in lora_module_names:
+        lora_module_names.remove('lm_head')
+    return list(lora_module_names)
+
+
+def get_accelerate_model(args, model, checkpoint_dir=None):
+    pconfig=PretrainedConfig(is_encoder_decoder=True,torch_dtype=torch.float32)
+    prtr=PreTrainedModel(pconfig)
+    # prtr.save_pretrained('workbench/pretrained/')
+    
+    model = AutoModelForCausalLM.from_pretrained(
+        None,
+        state_dict=model.state_dict(),
+        config=prtr,
+        load_in_4bit=True,
+        device_map='auto',
+        max_memory={0: '5120MB'},
+        quantization_config=BitsAndBytesConfig(
+            load_in_4bit=True,
+            bnb_4bit_compute_dtype=torch.bfloat16,
+            bnb_4bit_use_double_quant=True,
+            bnb_4bit_quant_type='nf4',
+        ),
+        torch_dtype=torch.bfloat16,
+    )
+
+    setattr(model, 'model_parallel', True)
+    setattr(model, 'is_parallelizable', True)
+
+    model.config.torch_dtype=torch.bfloat16
+    model=prepare_model_for_kbit_training(model, use_gradient_checkpointing=True)
+    model.gradient_checkpointing_enable()
+
+    if checkpoint_dir is not None:
+        print("Loading adapters from checkpoint.")
+        model = PeftModel.from_pretrained(model, osp.join(checkpoint_dir, 'adapter_model'), is_trainable=True)
+    else:
+        print(f'Adding LoRA modules...')
+        modules = find_eva_linear_names(model)
+        config = LoraConfig(
+            r=args.lora_rank,
+            lora_alpha=args.lora_alpha,
+            target_modules=modules,
+            lora_dropout=0.1,
+            bias="none",
+        )
+        model=get_peft_model(model, config)
+
+    for name, module in model.named_modules():
+        if isinstance(module, LoraLayer):
+            module = module.to(torch.bfloat16)
+        if 'norm' in name:
+            module = module.to(torch.float32)
+        if 'lm_head' in name or 'embed_tokens' in name:
+            if hasattr(module, 'weight') and module.weight.dtype == torch.float32:
+                module = module.to(torch.bfloat16)
+
+    return model
 
 
 def main():
@@ -132,9 +218,12 @@ def main():
     model = build_segmentor(
         cfg.model,
         train_cfg=cfg.get('train_cfg'),
-        test_cfg=cfg.get('test_cfg'))
+        test_cfg=cfg.get('test_cfg')
+    )
 
-    logger.info(model)
+    # for k,v in model.named_parameters():
+    #     print('{}: {}'.format(k, v.requires_grad))
+    # logger.info(model)
 
     datasets = [build_dataset(cfg.data.train)]
     if len(cfg.workflow) == 2:
@@ -151,6 +240,7 @@ def main():
             PALETTE=datasets[0].PALETTE)
     # add an attribute for visualization convenience
     model.CLASSES = datasets[0].CLASSES
+
     train_segmentor(
         model,
         datasets,
