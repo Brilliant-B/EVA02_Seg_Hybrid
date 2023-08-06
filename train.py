@@ -170,10 +170,9 @@ def get_finetune_model(model, code, verbose=False):
         print("**frozen parameters**")
         print(f"List: {freeze_list}")
     for key, value in model.named_parameters():
-        if freeze_match(key, freeze_list):
-            value.requires_grad = False
-            if verbose:
-                print(key)
+        value.requires_grad = not freeze_match(key, freeze_list)
+        if verbose:
+            print(key, value.requires_grad)
     return model
 
 

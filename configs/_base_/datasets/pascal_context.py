@@ -1,5 +1,5 @@
 # dataset settings
-dataset_type = 'PascalContextDataset59'
+dataset_type = 'PascalContextDataset'
 data_root = 'data/VOCdevkit/VOC2010/'
 img_norm_cfg = dict(
     mean=[123.675, 116.28, 103.53], std=[58.395, 57.12, 57.375], to_rgb=True)
@@ -57,5 +57,5 @@ data = dict(
         data_root=data_root,
         img_dir='JPEGImages',
         ann_dir='SegmentationClassContext',
-        split='ImageSets/SegmentationContext/tiny_val.txt',
+        split='ImageSets/SegmentationContext/val.txt',
         pipeline=test_pipeline))

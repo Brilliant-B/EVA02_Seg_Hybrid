@@ -686,6 +686,7 @@ class EVA2(nn.Module):
                 features.append(xp.contiguous())
 
         ops = [self.fpn1, self.fpn2, self.fpn3, self.fpn4]
+        latent = features[-1]
 
         if len(features) == 1:
             for i in range(len(ops) - 1):
@@ -693,9 +694,8 @@ class EVA2(nn.Module):
         for i in range(len(features)):
             features[i] = ops[i](features[i])
 
-        return tuple(features)
+        return tuple(features), latent
 
     def forward(self, x):
-        features = self.forward_features(x)
-        # print(f'input: {x.shape}')
-        return features
+        features, latent = self.forward_features(x)
+        return (features, latent)

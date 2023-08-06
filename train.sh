@@ -1,12 +1,15 @@
 #!/usr/bin/env bash
 
 GPU=0
-CONFIGS="configs/eva2_hybrid/Segmenter_EVA02_large_24_512_slide_80k.py"
-WORK_DIR="workbench/eva2_segmenter/"
+NAME="eva2_segmenter"
+CONFIGS="configs/Hyper_Control.py"
+WORK_DIR="workbench/${NAME}/train/"
+RESUME="workbench/${NAME}/train/finetune_1/iter_20000.pth"
 LOAD=""
-RESUME=""
 
-python train.py --config ${CONFIGS} --seed 0 --deterministic --gpu-ids ${GPU} \
+python train.py --config ${CONFIGS} --seed 0 --deterministic --gpu-ids ${GPU} --eval \
  --work-dir ${WORK_DIR} \
+#  --resume-from ${RESUME} \
 #  --no-validate
 #  --load-from ${LOAD}
+ 

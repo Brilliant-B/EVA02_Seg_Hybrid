@@ -7,6 +7,7 @@ import torch
 import torch.nn.functional as F
 from einops import rearrange
 from mmcv.cnn.bricks.drop import DropPath
+from mmcv.cnn import ConvModule
 from .Segmenter_linear_head import init_weights, trunc_normal_
 
 
@@ -89,14 +90,108 @@ class Block(nn.Module):
         return x
 
 
+class SFP(nn.Module):
+    '''multi_scale_adapter SFP'''
+    def __init__(self,
+                 in_channels,
+                 out_channels,
+                 scale_factors,
+                 num_outs,
+                 conv_cfg=None,
+                 norm_cfg=None,
+                 act_cfg=None):
+        super(SFP, self).__init__()
+        dim = in_channels
+        self.out_channels = out_channels
+        self.scale_factors = scale_factors
+        self.num_ins = len(scale_factors)
+        self.num_outs = num_outs
+        self.stages = []
+        for idx, scale in enumerate(scale_factors):
+            out_dim = dim
+            if scale == 4.0:
+                layers = [
+                    nn.ConvTranspose2d(dim, dim // 2, 2, stride=2, padding=0),
+                    nn.GroupNorm(1, dim // 2, eps=1e-6),
+                    nn.GELU(),
+                    nn.ConvTranspose2d(
+                        dim // 2, dim // 4, 2, stride=2, padding=0)
+                ]
+                out_dim = dim // 4
+            elif scale == 2.0:
+                layers = [
+                    nn.ConvTranspose2d(dim, dim // 2, 2, stride=2, padding=0)
+                ]
+                out_dim = dim // 2
+            elif scale == 1.0:
+                layers = []
+            elif scale == 0.5:
+                layers = [nn.MaxPool2d(kernel_size=2, stride=2, padding=0)]
+            else:
+                raise NotImplementedError(
+                    f'scale_factor={scale} is not supported yet.')
+
+            layers.extend([
+                ConvModule(
+                    out_dim,
+                    out_channels,
+                    1,
+                    conv_cfg=conv_cfg,
+                    norm_cfg=norm_cfg,
+                    act_cfg=act_cfg,
+                    inplace=False),
+                ConvModule(
+                    out_channels,
+                    out_channels,
+                    3,
+                    padding=1,
+                    conv_cfg=conv_cfg,
+                    norm_cfg=norm_cfg,
+                    act_cfg=act_cfg,
+                    inplace=False)
+            ])
+
+            layers = nn.Sequential(*layers)
+            self.add_module(f'sfp_{idx}', layers)
+            self.stages.append(layers)
+
+    def init_weights(self):
+        pass
+
+    def forward(self, inputs):
+        """Forward function."""
+        features = inputs[0]
+        outs = []
+
+        # part 1: build simple feature pyramid
+        for stage in self.stages:
+            outs.append(stage(features))
+
+        # part 2: add extra levels
+        if self.num_outs > self.num_ins:
+            # use max pool to get more levels on top of outputs
+            # (e.g., Faster R-CNN, Mask R-CNN)
+            for i in range(self.num_outs - self.num_ins):
+                outs.append(F.max_pool2d(outs[-1], 1, stride=2))
+        return tuple(outs)
+
+
 @HEADS.register_module()
 class SegmenterHead_maskT(BaseDecodeHead):
-    def __init__(self, img_size_ori, n_layers, n_heads, d_model, d_ff, drop_path_rate, dropout, **kwargs):
+    def __init__(self, img_size_ori, n_layers, n_heads, d_model, d_ff, drop_path_rate, dropout, multi_scale_adapter, **kwargs):
         super(SegmenterHead_maskT, self).__init__(**kwargs)
         self.img_size_ori = img_size_ori
         self.d_model = d_model
         self.d_ff = d_ff
         self.scale = d_model ** -0.5
+        self.multi_scale_adapter = multi_scale_adapter
+        if multi_scale_adapter:
+            self.SFP = SFP(
+                in_channels=self.in_channels,
+                out_channels=self.in_channels,
+                scale_factors=(4,0, 2.0, 1.0, 0.5),
+                num_outs=4,
+            )
 
         dpr = [x.item() for x in torch.linspace(0, drop_path_rate, n_layers)]
         self.blocks = nn.ModuleList(
@@ -116,7 +211,17 @@ class SegmenterHead_maskT(BaseDecodeHead):
         trunc_normal_(self.cls_emb, std=0.02)
 
     def forward(self, inputs):
-        x = self._transform_inputs(inputs)
+        # TODO
+        features, latent = inputs
+        if self.multi_scale_adapter:
+            assert self.input_transform == "resize_concat"
+            mid = self.SFP(latent)
+        elif self.input_transform:
+            mid = features
+        else:
+            mid = latent
+        
+        x = self._transform_inputs(mid)
         GS = x.shape[-1]
         x = rearrange(x, "b n h w -> b (h w) n")
         x = self.proj_dec(x)

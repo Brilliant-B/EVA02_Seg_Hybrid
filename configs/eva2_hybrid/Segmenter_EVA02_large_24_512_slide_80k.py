@@ -29,11 +29,9 @@ model = dict(
         mlp_ratio=4*2/3,      # GLU default
         out_indices=[7, 11, 15, 23],
         qkv_bias=True, 
-
         drop_rate=0.1, 
         attn_drop_rate=0.1,
         drop_path_rate=0.2,
-        
         init_values=None, 
         use_checkpoint=False, 
         use_abs_pos_emb=True, 
@@ -51,20 +49,21 @@ model = dict(
         type='SegmenterHead_maskT',
         img_size_ori=224, # 重要！
         n_layers=2,
-        n_heads=12,
-        d_model=768, # 重要！
-        d_ff=4 * 768,
+        n_heads=16,
+        d_model=1024, # 重要！
+        d_ff=4*1024,
         drop_path_rate=0.0,
         dropout=0.1,
-        
-        input_transform="resize_concat",
-        in_channels=(1024, 1024, 1024, 1024), # 重要！
-        in_index=(0, 1, 2, 3),
+        multi_scale_adapter=False,
+        input_transform=None,
+        in_channels=1024,
+        in_index=-1,
         channels=1024,
         dropout_ratio=0, # no relation
         num_classes=60,
         norm_cfg=norm_cfg,
         align_corners=False,
+        
         loss_decode=dict(type='CrossEntropyLoss', use_sigmoid=False, loss_weight=1.0)
     ),
     test_cfg = dict(mode='slide', crop_size=crop_size, stride=(150, 150))
@@ -86,11 +85,11 @@ lr_config = dict(_delete_=True, policy='poly',
 
 # By default, models are trained on 8 GPUs with 2 images per GPU
 data=dict(
-    samples_per_gpu=6,
+    samples_per_gpu=5,
     workers_per_gpu=2,
 )
 
-checkpoint_config = dict(by_epoch=False, interval=1000, max_keep_ckpts=10)
+checkpoint_config = dict(by_epoch=False, interval=2000, max_keep_ckpts=10)
 evaluation = dict(interval=10000, metric='mIoU', save_best='mIoU')
 
 runner = dict(type='IterBasedRunnerAmp')

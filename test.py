@@ -25,8 +25,8 @@ from mmseg.models.backbones import EVA2
 def parse_args():
     parser = argparse.ArgumentParser(
         description='mmseg test (and eval) a model')
-    parser.add_argument('config', help='test config file path')
-    parser.add_argument('checkpoint', help='checkpoint file')
+    parser.add_argument('--config', help='test config file path')
+    parser.add_argument('--checkpoint', help='checkpoint file')
     parser.add_argument(
         '--work-dir',
         help=('if specified, the evaluation metric results will be dumped'
@@ -37,7 +37,7 @@ def parse_args():
     parser.add_argument(
         '--format-only',
         action='store_true',
-        help='Format the output results without perform evaluation. It is'
+        help='Format the results without perform evaluation. It is'
         'useful when you want to format the result to a specific format and '
         'submit it to the test server')
     parser.add_argument(
@@ -124,20 +124,15 @@ def main():
         ('Please specify at least one operation (save/eval/format/show the '
          'results / save the results) with the argument "--out", "--eval"'
          ', "--format-only", "--show" or "--show-dir"')
-
     if args.eval and args.format_only:
         raise ValueError('--eval and --format_only cannot be both specified')
-
     if args.out is not None and not args.out.endswith(('.pkl', '.pickle')):
         raise ValueError('The output file must be a pkl file.')
-
     cfg = mmcv.Config.fromfile(args.config)
     if args.cfg_options is not None:
         cfg.merge_from_dict(args.cfg_options)
-
     # set multi-process settings
     setup_multi_processes(cfg)
-
     # set cudnn_benchmark
     if cfg.get('cudnn_benchmark', False):
         torch.backends.cudnn.benchmark = True
@@ -149,7 +144,6 @@ def main():
         cfg.data.test.pipeline[1].flip = True
     cfg.model.pretrained = None
     cfg.data.test.test_mode = True
-
     if args.gpu_id is not None:
         cfg.gpu_ids = [args.gpu_id]
 
@@ -165,8 +159,8 @@ def main():
     else:
         distributed = True
         init_dist(args.launcher, **cfg.dist_params)
-
     rank, _ = get_dist_info()
+    
     # allows not to create
     if args.work_dir is not None and rank == 0:
         mmcv.mkdir_or_exist(osp.abspath(args.work_dir))
