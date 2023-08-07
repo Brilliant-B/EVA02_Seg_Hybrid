@@ -146,7 +146,6 @@ def main():
     cfg.data.test.test_mode = True
     if args.gpu_id is not None:
         cfg.gpu_ids = [args.gpu_id]
-
     # init distributed env first, since logger depends on the dist info.
     if args.launcher == 'none':
         cfg.gpu_ids = [args.gpu_id]
@@ -166,10 +165,10 @@ def main():
         mmcv.mkdir_or_exist(osp.abspath(args.work_dir))
         timestamp = time.strftime('%Y%m%d_%H%M%S', time.localtime())
         if args.aug_test:
-            json_file = osp.join(args.work_dir,
+            json_file = osp.join(args.work_dir.replace("/hy-tmp/", ""),
                                  f'eval_multi_scale_{timestamp}.json')
         else:
-            json_file = osp.join(args.work_dir,
+            json_file = osp.join(args.work_dir.replace("/hy-tmp/", ""),
                                  f'eval_single_scale_{timestamp}.json')
     elif rank == 0:
         work_dir = osp.join('./work_dirs',

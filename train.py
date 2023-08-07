@@ -212,11 +212,12 @@ def main(args, info, verbose=False):
 
     # create work_dir
     mmcv.mkdir_or_exist(osp.abspath(cfg.work_dir))
+    mmcv.mkdir_or_exist(osp.abspath(cfg.work_dir.replace("/hy-tmp/", "")))
     # dump config
-    cfg.dump(osp.join(cfg.work_dir, osp.basename(config)))
+    cfg.dump(osp.join(cfg.work_dir.replace("/hy-tmp/", ""), osp.basename(config)))
     # init the logger before other steps
     timestamp = time.strftime('%Y%m%d_%H%M%S', time.localtime())
-    log_file = osp.join(cfg.work_dir, f'{timestamp}.log')
+    log_file = osp.join(cfg.work_dir.replace("/hy-tmp/", ""), f'{timestamp}.log')
     logger = get_root_logger(log_file=log_file, log_level=cfg.log_level)
 
     # init the meta dict to record some important information such as
@@ -280,10 +281,10 @@ def main(args, info, verbose=False):
 
 if __name__ == '__main__':
     args = parse_args()
-    neck_choices = ["linear", "fpn", "sfp"][:1]
+    neck_choices = ["linear", "fpn", "sfp"]
     for n in neck_choices:
         hyper_info = {
-            "finetune_code": 0,
+            "finetune_code": 1,
             "config_neck": n,
         }
         main(args, hyper_info)

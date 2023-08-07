@@ -12,7 +12,7 @@ data=dict(
     samples_per_gpu=3,
     workers_per_gpu=2,
     val=dict(split='ImageSets/SegmentationContext/tiny_val.txt',),
-    test=dict(split='ImageSets/SegmentationContext/val.txt',),
+    test=dict(split='ImageSets/SegmentationContext/tiny_val.txt',),
 )
 
 checkpoint_config = dict(interval=2000,)
