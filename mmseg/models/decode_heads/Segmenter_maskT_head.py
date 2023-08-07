@@ -101,14 +101,13 @@ class SFP(nn.Module):
                  norm_cfg=None,
                  act_cfg=None):
         super(SFP, self).__init__()
-        dim = in_channels
         self.out_channels = out_channels
         self.scale_factors = scale_factors
         self.num_ins = len(scale_factors)
         self.num_outs = num_outs
         self.stages = []
         for idx, scale in enumerate(scale_factors):
-            out_dim = dim
+            out_dim = dim = in_channels[idx]
             if scale == 4.0:
                 layers = [
                     nn.ConvTranspose2d(dim, dim // 2, 2, stride=2, padding=0),
@@ -134,15 +133,15 @@ class SFP(nn.Module):
             layers.extend([
                 ConvModule(
                     out_dim,
-                    out_channels,
+                    out_channels[idx],
                     1,
                     conv_cfg=conv_cfg,
                     norm_cfg=norm_cfg,
                     act_cfg=act_cfg,
                     inplace=False),
                 ConvModule(
-                    out_channels,
-                    out_channels,
+                    out_channels[idx],
+                    out_channels[idx],
                     3,
                     padding=1,
                     conv_cfg=conv_cfg,
@@ -160,7 +159,8 @@ class SFP(nn.Module):
 
     def forward(self, inputs):
         """Forward function."""
-        features = inputs[0]
+        # print(inputs.shape)
+        features = inputs
         outs = []
 
         # part 1: build simple feature pyramid
@@ -187,9 +187,9 @@ class SegmenterHead_maskT(BaseDecodeHead):
         self.multi_scale_adapter = multi_scale_adapter
         if multi_scale_adapter:
             self.SFP = SFP(
-                in_channels=self.in_channels,
-                out_channels=self.in_channels,
-                scale_factors=(4,0, 2.0, 1.0, 0.5),
+                in_channels=(1024, 1024, 1024, 1024),
+                out_channels=(256, 512, 1024, 1024),
+                scale_factors=(4.0, 2.0, 1.0, 0.5),
                 num_outs=4,
             )
 
@@ -199,7 +199,13 @@ class SegmenterHead_maskT(BaseDecodeHead):
         )
 
         self.cls_emb = nn.Parameter(torch.randn(1, self.num_classes, d_model))
-        self.proj_dec = nn.Linear(self.in_channels, d_model)
+        
+        if self.multi_scale_adapter:
+            self.proj_dec = nn.Linear(2816, d_model)
+        elif self.input_transform:
+            self.proj_dec = nn.Linear(4096, d_model)
+        else:
+            self.proj_dec = nn.Linear(1024, d_model)
 
         self.proj_patch = nn.Parameter(self.scale * torch.randn(d_model, d_model))
         self.proj_classes = nn.Parameter(self.scale * torch.randn(d_model, d_model))
@@ -215,13 +221,12 @@ class SegmenterHead_maskT(BaseDecodeHead):
         features, latent = inputs
         if self.multi_scale_adapter:
             assert self.input_transform == "resize_concat"
-            mid = self.SFP(latent)
+            x = self._transform_inputs(self.SFP(latent))
         elif self.input_transform:
-            mid = features
+            x = self._transform_inputs(features)
         else:
-            mid = latent
+            x = latent
         
-        x = self._transform_inputs(mid)
         GS = x.shape[-1]
         x = rearrange(x, "b n h w -> b (h w) n")
         x = self.proj_dec(x)

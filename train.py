@@ -24,7 +24,6 @@ from mmseg.models.backbones import EVA2
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Train a segmentor')
-    parser.add_argument('--config', help='train config file path')
     parser.add_argument('--work-dir', help='the dir to save logs and models')
     parser.add_argument(
         '--load-from', help='the checkpoint file to load weights from')
@@ -177,11 +176,10 @@ def get_finetune_model(model, code, verbose=False):
 
 
 
-def main(info, verbose=False):
-    args = parse_args()
-    finetune_code = info["finetune_code"]
-
-    cfg = Config.fromfile(args.config)
+def main(args, info, verbose=False):
+    finetune_code, neck_name = info["finetune_code"], info["config_neck"]
+    config = f"configs/{neck_name}_neck.py"
+    cfg = Config.fromfile(config)
     if args.options is not None:
         cfg.merge_from_dict(args.options)
     # set cudnn_benchmark
@@ -194,8 +192,9 @@ def main(info, verbose=False):
         cfg.work_dir = args.work_dir
     elif cfg.get('work_dir', None) is None:
         # use config filename as default work_dir if cfg.work_dir is None
-        cfg.work_dir = osp.join('./work_dirs', osp.splitext(osp.basename(args.config))[0])
-    cfg.work_dir = osp.join(cfg.work_dir, f"finetune_{finetune_code}")
+        cfg.work_dir = osp.join('./work_dirs', osp.splitext(osp.basename(config))[0])
+    cfg.work_dir = osp.join(cfg.work_dir, f"neck_{neck_name}_finetune_{finetune_code}")
+    
     if args.load_from is not None:
         cfg.load_from = args.load_from
     if args.resume_from is not None:
@@ -214,7 +213,7 @@ def main(info, verbose=False):
     # create work_dir
     mmcv.mkdir_or_exist(osp.abspath(cfg.work_dir))
     # dump config
-    cfg.dump(osp.join(cfg.work_dir, osp.basename(args.config)))
+    cfg.dump(osp.join(cfg.work_dir, osp.basename(config)))
     # init the logger before other steps
     timestamp = time.strftime('%Y%m%d_%H%M%S', time.localtime())
     log_file = osp.join(cfg.work_dir, f'{timestamp}.log')
@@ -240,7 +239,7 @@ def main(info, verbose=False):
         set_random_seed(args.seed, deterministic=args.deterministic)
     cfg.seed = args.seed
     meta['seed'] = args.seed
-    meta['exp_name'] = osp.basename(args.config)
+    meta['exp_name'] = osp.basename(config)
 
     model = build_segmentor(
         cfg.model,
@@ -280,7 +279,11 @@ def main(info, verbose=False):
 
 
 if __name__ == '__main__':
-    hyper_info = {
-        "finetune_code": 1,
-    }
-    main(hyper_info) # verbose=True
+    args = parse_args()
+    neck_choices = ["linear", "fpn", "sfp"][:1]
+    for n in neck_choices:
+        hyper_info = {
+            "finetune_code": 0,
+            "config_neck": n,
+        }
+        main(args, hyper_info)

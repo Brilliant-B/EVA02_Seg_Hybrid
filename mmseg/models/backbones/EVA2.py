@@ -698,4 +698,5 @@ class EVA2(nn.Module):
 
     def forward(self, x):
         features, latent = self.forward_features(x)
+        # print(latent.shape)
         return (features, latent)
