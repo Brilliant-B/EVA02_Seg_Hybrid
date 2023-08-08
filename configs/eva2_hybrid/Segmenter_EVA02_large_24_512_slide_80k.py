@@ -63,7 +63,6 @@ model = dict(
         num_classes=60,
         norm_cfg=norm_cfg,
         align_corners=False,
-        
         loss_decode=dict(type='CrossEntropyLoss', use_sigmoid=False, loss_weight=1.0)
     ),
     test_cfg = dict(mode='slide', crop_size=crop_size, stride=(150, 150))
