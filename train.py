@@ -219,6 +219,7 @@ def main(args, info, verbose=False):
     timestamp = time.strftime('%Y%m%d_%H%M%S', time.localtime())
     log_file = osp.join(cfg.work_dir.replace("/hy-tmp/", ""), f'{timestamp}.log')
     logger = get_root_logger(log_file=log_file, log_level=cfg.log_level)
+    logger.info(f"Neck: {neck_name}; Finetune_code: {finetune_code}")
 
     # init the meta dict to record some important information such as
     # environment info and seed, which will be logged
@@ -234,9 +235,10 @@ def main(args, info, verbose=False):
 
     # set random seeds
     if args.seed is not None:
-        logger.info(f'Distributed training: {distributed}')
-        logger.info(f'Set random seed to {args.seed}, deterministic: '
-                    f'{args.deterministic}')
+        if verbose:
+            logger.info(f'Distributed training: {distributed}')
+            logger.info(f'Set random seed to {args.seed}, deterministic: '
+                        f'{args.deterministic}')
         set_random_seed(args.seed, deterministic=args.deterministic)
     cfg.seed = args.seed
     meta['seed'] = args.seed
@@ -281,10 +283,11 @@ def main(args, info, verbose=False):
 
 if __name__ == '__main__':
     args = parse_args()
-    neck_choices = ["linear", "fpn", "sfp"]
+    neck_choices = ["fpn", "sfp", "linear"]
+    # finetune_code = {0: no-freeze, 1: freeze EVA}
     for n in neck_choices:
         hyper_info = {
-            "finetune_code": 1,
+            "finetune_code": 0,
             "config_neck": n,
         }
         main(args, hyper_info)

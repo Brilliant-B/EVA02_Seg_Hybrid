@@ -3,7 +3,7 @@
 GPU=0
 NAME="eva2_segmenter"
 WORK_DIR="/hy-tmp/workbench/${NAME}/train/"
-RESUME="/hy-tmp/neck_linear_finetune_0/iter_6000.pth"
+RESUME=""
 LOAD=""
 
 python train.py --seed 0 --deterministic --gpu-ids ${GPU} \
