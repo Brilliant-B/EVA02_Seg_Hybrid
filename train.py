@@ -283,7 +283,7 @@ def main(args, info, verbose=False):
 
 if __name__ == '__main__':
     args = parse_args()
-    neck_choices = ["fpn", "sfp", "linear"]
+    neck_choices = ["fpn", "sfp", "linear"][2:]
     # finetune_code = {0: no-freeze, 1: freeze EVA}
     for n in neck_choices:
         hyper_info = {
